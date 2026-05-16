@@ -9,8 +9,16 @@ Run the following command to create a virtual environment, install dependencies,
 ```bash
 ./setup.sh
 ```
+*Note: During setup, you will be prompted for Telegram Bot verification if you have set your `BOT_TOKEN` in `api_key.py`.*
 
-### 2. Manual Login (One-Time)
+### 2. Telegram Alerts (Optional)
+To receive alerts on Telegram when activity is detected in the last 24 hours:
+1. Open `api_key.py` and paste your Bot Token from @BotFather.
+2. Run `./setup.sh` again.
+3. The script will give you a 6-digit code. Send this code to your bot on Telegram.
+4. Your `chat_id` will be saved, and alerts will be active.
+
+### 3. Manual Login (One-Time)
 You must perform a manual login once so the browser can save your cookies and session data locally.
 ```bash
 ./venv/bin/python3 open_browser.py

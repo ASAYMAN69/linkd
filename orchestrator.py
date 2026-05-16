@@ -2,9 +2,40 @@ import asyncio
 import json
 import datetime
 import sys
-import subprocess
+import os
+import urllib.request
 from get_gs import run_webhook_flow
 from post_gs import post_to_gs
+
+# Try to load Telegram credentials
+try:
+    from api_key import BOT_TOKEN
+    with open('chat_id.txt', 'r') as f:
+        CHAT_ID = f.read().strip()
+except ImportError:
+    BOT_TOKEN = None
+    CHAT_ID = None
+except FileNotFoundError:
+    CHAT_ID = None
+
+def send_telegram_alert(message):
+    """Sends a message to Telegram if credentials are set."""
+    if not BOT_TOKEN or not CHAT_ID or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        return
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = json.dumps({
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }).encode('utf-8')
+
+    req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(req) as response:
+            pass
+    except Exception as e:
+        print(f"[!] Failed to send Telegram alert: {e}")
 
 async def run_linkedin_script(semaphore, row, today_str):
     async with semaphore:
@@ -37,6 +68,20 @@ async def run_linkedin_script(semaphore, row, today_str):
 
             print(f"[+] Found last post timestamp for {linkedin_url}: {last_post}")
             
+            # --- TELEGRAM ALERT LOGIC ---
+            # Check if activity happened in the last 24 hours
+            ts_ms = result.get('timestamp', 0)
+            now_ms = datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000
+            if ts_ms > (now_ms - 24 * 60 * 60 * 1000):
+                print(f"[*] Sending Telegram alert for {linkedin_url}...")
+                msg = f"🔔 <b>New LinkedIn Activity!</b>\n\n" \
+                      f"<b>Profile:</b> {linkedin_url}\n" \
+                      f"<b>Type:</b> {result.get('type')}\n" \
+                      f"<b>Time:</b> {last_post}\n\n" \
+                      f"<b>Content Preview:</b>\n{result.get('content')[:200]}..."
+                send_telegram_alert(msg)
+            # ----------------------------
+
             # Prepare update for post_gs.py
             query_params = {'linkedin': linkedin_url}
             body_data = {

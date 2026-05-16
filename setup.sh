@@ -29,6 +29,25 @@ echo "🌐 Installing Chromium browsers..."
 ./venv/bin/python3 -m playwright install chromium
 ./venv/bin/python3 -m patchright install chromium
 
+# Telegram Setup
+echo ""
+echo "🤖 Setting up Telegram Alerts..."
+
+# Check if node and npm are installed
+if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+    echo "⚠️ Warning: Node.js or npm not found. Telegram setup will be skipped."
+else
+    # Initialize npm and install grammy if needed
+    if [ ! -d "node_modules" ]; then
+        echo "🛠 Installing grammy SDK..."
+        npm init -y > /dev/null
+        npm install grammy --silent
+    fi
+
+    # Run the verification script
+    node telegram_setup.js
+fi
+
 echo ""
 echo "✨ Setup Complete!"
 echo "===================================================="
