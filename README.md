@@ -7,14 +7,14 @@ An undetectable LinkedIn activity tracker using Scrapling and Chromium. It track
 ### 1. Initial Setup
 Run the following command to create a virtual environment, install dependencies, and download browsers:
 ```bash
-./setup.sh
+bash setup.sh
 ```
-*Note: During setup, you will be prompted for Telegram Bot verification if you have set your `BOT_TOKEN` in `api_key.py`.*
+*Note: If you are on a restricted mount (like NTFS), always use the `bash` command to run `.sh` files. This bypasses permission issues.*
 
 ### 2. Telegram Alerts (Optional)
 To receive alerts on Telegram when activity is detected in the last 24 hours:
 1. Open `api_key.py` and paste your Bot Token from @BotFather.
-2. Run `./setup.sh` again.
+2. Run `bash setup.sh` again.
 3. The script will give you a 6-digit code. Send this code to your bot on Telegram.
 4. Your `chat_id` will be saved, and alerts will be active.
 
@@ -25,7 +25,17 @@ You must perform a manual login once so the browser can save your cookies and se
 ```
 *A browser window will open. Log in to LinkedIn, then close the window.*
 
-### 3. Track a Profile
+### 4. Automated Tracking
+To enable daily 9 AM tracking (with catch-up support):
+```bash
+bash start_scheduler.sh
+```
+To stop automation:
+```bash
+bash stop_scheduler.sh
+```
+
+### 5. Manual Track
 Run the tracker with any LinkedIn profile URL. It will output the latest activity as JSON.
 ```bash
 ./venv/bin/python3 linkedin_tracker.py "https://www.linkedin.com/in/username"
@@ -42,4 +52,6 @@ Run the tracker with any LinkedIn profile URL. It will output the latest activit
 - `linkedin_tracker.py`: The main automation script.
 - `open_browser.py`: Helper script for manual login.
 - `setup.sh`: Automated environment setup.
+- `start_scheduler.sh`: Enables daily automation.
+- `stop_scheduler.sh`: Disables daily automation.
 - `.scrapling_session/`: (Generated) Stores your persistent browser data.

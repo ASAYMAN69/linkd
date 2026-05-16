@@ -1,35 +1,71 @@
 #!/bin/bash
 
-# Get the absolute path of the project directory
-PROJECT_DIR=$(pwd)
-SERVICE_NAME="linkedin-tracker"
-SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.service"
-TIMER_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.timer"
+# =================================================================
+# ROBUST LINKEDIN TRACKER SCHEDULER
+# Works on most Linux distros, WSL, and different mount types.
+# =================================================================
 
-echo "⏲️ Setting up automated scheduler (9 AM daily)..."
+# 1. Fix potential line ending issues (CRLF from Windows)
+# If this script was pulled on Windows, we'll fix it in memory
+if [[ "$(printf '%s' "$0" | xxd -p | tail -c 3)" == "0d" ]]; then
+    exec tr -d '\r' < "$0" | bash -s "$@"
+    exit $?
+fi
 
-# Create systemd user directory if it doesn't exist
-mkdir -p "$HOME/.config/systemd/user"
+set -e
 
-# Create the service file
-cat <<EOF > "$SERVICE_FILE"
+# 2. Get absolute paths (Works even if called from outside the folder)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PYTHON_BIN="$SCRIPT_DIR/venv/bin/python3"
+ORCHESTRATOR="$SCRIPT_DIR/orchestrator.py"
+LOG_FILE="$SCRIPT_DIR/scheduler.log"
+
+echo "🔍 Detecting environment..."
+echo "📍 Project directory: $SCRIPT_DIR"
+
+# Check if venv exists
+if [ ! -f "$PYTHON_BIN" ]; then
+    echo "❌ Error: Virtual environment not found at $PYTHON_BIN"
+    echo "Please run ./setup.sh first."
+    exit 1
+fi
+
+# 3. Detect Scheduler Type (Systemd vs Cron)
+# Systemd is preferred for its "Persistent=true" (catch-up) feature.
+if systemctl --user daemon-reload &>/dev/null; then
+    SCHEDULER="systemd"
+    echo "✅ Systemd detected. Using persistent timer (best for catch-up)."
+else
+    SCHEDULER="cron"
+    echo "⚠️ Systemd user mode not available. Falling back to Crontab."
+fi
+
+if [ "$SCHEDULER" == "systemd" ]; then
+    SERVICE_NAME="linkedin-tracker"
+    SERVICE_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.service"
+    TIMER_FILE="$HOME/.config/systemd/user/$SERVICE_NAME.timer"
+
+    mkdir -p "$HOME/.config/systemd/user"
+
+    # Create Service
+    cat <<EOF > "$SERVICE_FILE"
 [Unit]
 Description=LinkedIn Activity Tracker Service
 After=network.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=$PROJECT_DIR
-ExecStart=$PROJECT_DIR/venv/bin/python3 $PROJECT_DIR/orchestrator.py
-StandardOutput=append:$PROJECT_DIR/scheduler.log
-StandardError=append:$PROJECT_DIR/scheduler.log
+WorkingDirectory=$SCRIPT_DIR
+ExecStart=$PYTHON_BIN $ORCHESTRATOR
+StandardOutput=append:$LOG_FILE
+StandardError=append:$LOG_FILE
 
 [Install]
 WantedBy=default.target
 EOF
 
-# Create the timer file
-cat <<EOF > "$TIMER_FILE"
+    # Create Timer with Persistence
+    cat <<EOF > "$TIMER_FILE"
 [Unit]
 Description=Run LinkedIn Activity Tracker daily at 9 AM
 
@@ -42,20 +78,26 @@ Unit=$SERVICE_NAME.service
 WantedBy=timers.target
 EOF
 
-# Reload systemd user daemon
-systemctl --user daemon-reload
+    systemctl --user daemon-reload
+    systemctl --user enable "$SERVICE_NAME.timer"
+    systemctl --user start "$SERVICE_NAME.timer"
+    echo "🚀 Triggering initial run via systemd..."
+    systemctl --user start "$SERVICE_NAME.service"
 
-# Enable and start the timer
-systemctl --user enable "$SERVICE_NAME.timer"
-systemctl --user start "$SERVICE_NAME.timer"
-
-# Fire right now as requested
-echo "🚀 Triggering initial run..."
-systemctl --user start "$SERVICE_NAME.service"
+else
+    # CRON FALLBACK
+    # We use a trick to emulate "Persistent" by checking if we ran today
+    # But for simplicity, we'll just set a standard 9 AM cron
+    (crontab -l 2>/dev/null | grep -v "$ORCHESTRATOR" ; echo "0 9 * * * $PYTHON_BIN $ORCHESTRATOR >> $LOG_FILE 2>&1") | crontab -
+    
+    echo "🚀 Triggering initial run manually..."
+    $PYTHON_BIN $ORCHESTRATOR >> $LOG_FILE 2>&1 &
+fi
 
 echo ""
-echo "✅ Scheduler is active!"
-echo "📍 Task will run every day at 9:00 AM."
-echo "📍 If the device is off at 9:00 AM, it will run immediately when turned on."
-echo "📍 Logs are available at: $PROJECT_DIR/scheduler.log"
-echo "📍 To disable, run: ./stop_scheduler.sh"
+echo "✨ Scheduler Ready!"
+echo "📍 Scheduled for: Daily at 9:00 AM"
+echo "📍 Logs: $LOG_FILE"
+echo ""
+echo "💡 Note: If you are on a restricted mount (like NTFS/Shared Drive),"
+echo "   always run this script with: bash start_scheduler.sh"
