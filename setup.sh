@@ -22,11 +22,13 @@ fi
 # Upgrade pip and install Scrapling in editable mode with fetchers
 echo "🛠 Installing dependencies..."
 ./venv/bin/pip install --upgrade pip
+./venv/bin/pip install requests
 ./venv/bin/pip install -e "./Scrapling[fetchers]"
 
-# Install Playwright/Patchright browsers
-echo "🌐 Installing Chromium browsers..."
-./venv/bin/python3 -m playwright install chromium
+# Install Playwright/Patchright browsers and system dependencies
+echo "🌐 Installing Chromium browsers and system dependencies..."
+# Use sudo for install-deps if possible, but we'll try without first or just skip if it fails
+./venv/bin/python3 -m playwright install --with-deps chromium
 ./venv/bin/python3 -m patchright install chromium
 
 # Telegram Setup

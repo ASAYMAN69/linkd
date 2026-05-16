@@ -97,70 +97,52 @@ async def run_linkedin_script(semaphore, row, today_str):
             print(f"[!] Failed to parse tracker output for {linkedin_url}: {stdout.decode()}")
 
 async def main():
+    # 1. Get today's date
+    today_str = datetime.date.today().isoformat()
+    print(f"[*] Today's date: {today_str}")
+
+    # 2. Get data from get_gs.py
+    print("[*] Fetching data from Google Sheets...")
+    # run_webhook_flow returns the JSON string
+    data_str = run_webhook_flow()
+    if not data_str:
+        print("[!] Failed to fetch data.")
+        return
+
     try:
-        # 1. Get today's date
-        today_str = datetime.date.today().isoformat()
-        print(f"[*] {datetime.datetime.now()}: Starting daily check for {today_str}")
+        rows = json.loads(data_str)
+    except json.JSONDecodeError:
+        print(f"[!] Failed to parse data from get_gs.py: {data_str}")
+        return
 
-        # 2. Get data from get_gs.py
-        print("[*] Fetching data from Google Sheets...")
-        try:
-            data_str = run_webhook_flow()
-        except Exception as e:
-            print(f"[!] CRITICAL: get_gs.py failed to run: {e}")
-            return
-
-        if not data_str:
-            print("[!] Failed to fetch data (empty response).")
-            return
-
-        try:
-            # Clean data_str in case it has leading/trailing whitespace or non-json junk
-            data_str = data_str.strip()
-            # If the output contains other print statements, try to find the JSON part
-            if not data_str.startswith('[') and '[' in data_str:
-                 data_str = data_str[data_str.find('['):]
-            
-            rows = json.loads(data_str)
-        except json.JSONDecodeError as e:
-            print(f"[!] Failed to parse data from Google Sheets as JSON.")
-            print(f"[!] Raw data received: {data_str[:500]}...")
-            print(f"[!] Error: {e}")
-            return
-
-        if not isinstance(rows, list):
-            print(f"[!] Expected a list of rows, but got {type(rows).__name__}")
-            return
-
-        # 3. Filter rows and run tasks
-        tasks = []
-        semaphore = asyncio.Semaphore(3) # Max 3 parallel executions
+    # 3. Filter rows
+    tasks = []
+    semaphore = asyncio.Semaphore(3) # Max 3 parallel executions
+    
+    for row in rows:
+        linkedin = row.get('linkedin')
+        status = row.get('status')
         
-        for row in rows:
-            if not isinstance(row, dict): continue
+        if not linkedin or status is None:
+            # User said "linkedin, status MUST"
+            continue
             
-            linkedin = row.get('linkedin')
-            status = row.get('status')
-            
-            if not linkedin:
-                continue
-                
-            # If status is not today's date, we need to check it
-            if str(status) != today_str:
-                tasks.append(run_linkedin_script(semaphore, row, today_str))
+        if status != today_str:
+            tasks.append(run_linkedin_script(semaphore, row, today_str))
 
-        if not tasks:
-            print("[*] No rows need updating today.")
-            return
+    if not tasks:
+        print("[*] No rows need updating.")
+        return
 
-        print(f"[*] Queuing {len(tasks)} profiles for checking...")
-        await asyncio.gather(*tasks)
-        print(f"[*] {datetime.datetime.now()}: All tasks completed successfully.")
-
-    except Exception as e:
-        print(f"[!] UNEXPECTED CRASH in orchestrator.py: {e}")
-        import traceback
-        traceback.print_exc()
+    print(f"[*] Queuing {len(tasks)} updates...")
+    await asyncio.gather(*tasks)
+    print("[*] All tasks completed.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"[FATAL] Orchestrator failed to start: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
